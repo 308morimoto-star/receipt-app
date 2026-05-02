@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="仕訳">
+<meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%230f1117'/%3E%3Ctext x='256' y='340' font-size='280' text-anchor='middle' fill='white'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E">
+<title>レシート仕訳</title>
+<style>
+/* ── Reset & base ─────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{height:100%;overscroll-behavior:none}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;
+  background:#0f1117;color:#f0ede8;
+  height:100%;min-height:100dvh;
+  overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font-family:inherit}
+button{cursor:pointer;-webkit-appearance:none}
+input,select{-webkit-appearance:none;appearance:none}
+
+/* ── CSS variables ────────────────────────────────────────────── */
+:root{
+  --bg:#0f1117;
+  --bg2:#1a1d26;
+  --bg3:#252836;
+  --border:#2e3347;
+  --text:#f0ede8;
+  --text2:#8b8fa8;
+  --text3:#555a70;
+  --accent:#4f8dff;
+  --accent-dim:#1a2d52;
+  --success:#34c77b;
+  --success-dim:#0d2b1a;
+  --warn:#f5a623;
+  --warn-dim:#2d2010;
+  --error:#ff5f5f;
+  --error-dim:#2d1010;
+  --safe-top:env(safe-area-inset-top,44px);
+  --safe-bot:env(safe-area-inset-bottom,34px);
+}
+
+/* ── App shell ────────────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+
+/* ── Status-bar spacer ────────────────────────────────────────── */
+.statusbar{height:var(--safe-top);background:var(--bg);flex-shrink:0}
+
+/* ── Top nav bar ─────────────────────────────────────────────── */
+.navbar{
+  background:var(--bg);
+  border-bottom:1px solid var(--border);
+  padding:0 16px 12px;
+  flex-shrink:0;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:10;
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+}
+.navbar-title{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.navbar-badge{
+  background:var(--accent);color:#fff;
+  font-size:10px;font-weight:700;letter-spacing:.06em;
+  padding:3px 8px;border-radius:20px;
+  font-feature-settings:'tnum';
+  flex-shrink:0;margin-bottom:2px;
+}
+
+/* ── Scrollable content ───────────────────────────────────────── */
+.content{
+  flex:1;overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
+  padding:16px 16px calc(var(--safe-bot) + 80px);
+}
+
+/* ── Bottom tab bar ───────────────────────────────────────────── */
+.tabbar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(15,17,23,.92);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border-top:1px solid var(--border);
+  display:flex;
+  padding-bottom:var(--safe-bot);
+  z-index:200;
+}
+.tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  padding:8px 4px 4px;gap:3px;
+  color:var(--text3);font-size:10px;font-weight:500;
+  border:none;background:none;transition:color .15s;
+}
+.tab.active{color:var(--accent)}
+.tab-icon{font-size:22px;line-height:1;transition:transform .15s}
+.tab.active .tab-icon{transform:scale(1.1)}
+
+/* ── Section pages ────────────────────────────────────────────── */
+.page{display:none;animation:slideIn .22s ease}
+.page.visible{display:block}
+@keyframes slideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ── Card ─────────────────────────────────────────────────────── */
+.card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:16px;padding:16px;margin-bottom:14px;
+}
+.card-title{
+  font-size:11px;font-weight:700;color:var(--text2);
+  letter-spacing:.1em;text-transform:uppercase;
+  margin-bottom:14px;display:flex;align-items:center;gap:8px;
+}
+.card-title::before{content:'';width:3px;height:12px;background:var(--accent);border-radius:2px;display:block}
+
+/* ── Notice banner ────────────────────────────────────────────── */
+.notice{
+  border-radius:10px;padding:10px 13px;font-size:13px;
+  margin-bottom:12px;line-height:1.55;display:flex;gap:8px;
+}
+.notice.info{background:var(--accent-dim);color:#93c5fd;border:1px solid #1e3a6e}
+.notice.success{background:var(--success-dim);color:#6ee7a8;border:1px solid #0d4027}
+.notice.warn{background:var(--warn-dim);color:#fcd58a;border:1px solid #4a3010}
+.notice.error{background:var(--error-dim);color:#fca5a5;border:1px solid #4a1010}
+
+/* ── Upload zone ──────────────────────────────────────────────── */
+.upload-zone{
+  border:2px dashed var(--border);border-radius:14px;
+  padding:40px 20px;text-align:center;
+  cursor:pointer;position:relative;
+  transition:border-color .2s,background .2s;
+  background:var(--bg3);
+}
+.upload-zone.drag{border-color:var(--accent);background:var(--accent-dim)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{font-size:48px;margin-bottom:12px;line-height:1}
+.upload-zone h3{font-size:16px;font-weight:700;margin-bottom:6px}
+.upload-zone p{font-size:13px;color:var(--text2)}
+
+/* ── Camera button ────────────────────────────────────────────── */
+.camera-btn{
+  display:flex;align-items:center;justify-content:center;gap:10;
+  width:100%;padding:16px;border-radius:14px;
+  background:var(--accent);color:#fff;
+  font-size:16px;font-weight:700;border:none;
+  margin-top:12px;
+  box-shadow:0 4px 20px rgba(79,141,255,.35);
+  active-transform:scale(.97);transition:transform .1s,box-shadow .1s;
+}
+.camera-btn:active{transform:scale(.97);box-shadow:none}
+
+/* ── Field ────────────────────────────────────────────────────── */
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field label{font-size:12px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:5px}
+.field input,.field select{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:10px;padding:12px 13px;
+  font-size:15px;color:var(--text);
+  width:100%;transition:border-color .15s,background .15s;
+}
+.field input:focus,.field select:focus{
+  outline:none;border-color:var(--accent);
+  background:#1c2438;
+}
+.field.ai-f input,.field.ai-f select{
+  background:var(--accent-dim);border-color:#2a4070;
+}
+.field.mod-f input,.field.mod-f select{
+  background:var(--warn-dim);border-color:#5a3c10;
+}
+
+/* Tags */
+.tag{
+  font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;
+  font-feature-settings:'tnum';letter-spacing:.06em;
+}
+.tag.ai{background:var(--accent);color:#fff}
+.tag.mod{background:var(--warn);color:#fff}
+
+/* ── Confidence bar ───────────────────────────────────────────── */
+.conf-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.conf-bar{flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.conf-fill{height:100%;border-radius:2px;transition:width .5s}
+.conf-pct{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ── Receipt item card ────────────────────────────────────────── */
+.receipt-item{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:14px;padding:14px;margin-bottom:12px;
+  overflow:hidden;
+}
+.receipt-header{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:12px}
+.receipt-img{
+  width:100%;max-height:220px;object-fit:contain;
+  border-radius:10px;background:#111;
+  display:block;margin-bottom:14px;
+}
+.analyzing-wrap{
+  display:flex;flex-direction:column;align-items:center;
+  padding:28px;gap:10;
+}
+.spinner{
+  width:32px;height:32px;
+  border:3px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Journal table (card list on mobile) ─────────────────────── */
+.j-card{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:12px;padding:13px 14px;margin-bottom:10px;
+  position:relative;
+}
+.j-card.tax8{border-left:3px solid var(--warn)}
+.j-card.tax10{border-left:3px solid var(--accent)}
+.j-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}
+.j-row:last-child{margin-bottom:0}
+.j-label{font-size:11px;color:var(--text2);font-weight:600;flex-shrink:0;width:70px}
+.j-val{font-size:13px;color:var(--text);flex:1;word-break:break-all}
+.j-amt{font-size:18px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.j-del{
+  position:absolute;top:12px;right:12px;
+  background:var(--error-dim);border:1px solid var(--border);
+  color:var(--error);font-size:18px;line-height:1;
+  border-radius:8px;width:30px;height:30px;
+  display:flex;align-items:center;justify-content:center;
+  padding:0;
+}
+.j-del:active{background:var(--error);color:#fff}
+.j-edit-row{display:flex;gap:8px;margin-top:8px}
+.j-edit-row select,.j-edit-row input{
+  flex:1;background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:14px 20px;border-radius:12px;
+  font-size:15px;font-weight:700;border:none;
+  transition:transform .1s,opacity .1s;
+  width:100%;
+}
+.btn:active{transform:scale(.97);opacity:.88}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 4px 18px rgba(79,141,255,.3)}
+.btn-success{background:var(--success);color:#fff;box-shadow:0 4px 18px rgba(52,199,123,.25)}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn-danger{background:var(--error-dim);color:var(--error);border:1px solid var(--border)}
+.btn:disabled{opacity:.38;pointer-events:none}
+.btn-row{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.btn-sm{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  padding:9px 14px;border-radius:9px;font-size:13px;font-weight:700;border:none;
+  flex:1;transition:transform .1s;
+}
+.btn-sm:active{transform:scale(.96)}
+.btn-sm-primary{background:var(--accent);color:#fff}
+.btn-sm-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+
+/* ── CSV preview ──────────────────────────────────────────────── */
+.csv-pre{
+  background:#0a0c10;color:#4ade80;
+  font-family:'SF Mono',ui-monospace,monospace;
+  font-size:10px;padding:14px;border-radius:12px;
+  overflow-x:auto;white-space:pre;line-height:1.75;
+  max-height:200px;overflow-y:auto;
+  border:1px solid var(--border);
+}
+
+/* ── Count badge ──────────────────────────────────────────────── */
+.count-badge{
+  background:var(--accent);color:#fff;
+  font-size:11px;font-weight:700;padding:2px 8px;
+  border-radius:20px;font-variant-numeric:tabular-nums;
+}
+
+/* ── Empty state ──────────────────────────────────────────────── */
+.empty{text-align:center;padding:48px 20px;color:var(--text2)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+
+/* ── PWA install banner ───────────────────────────────────────── */
+#install-banner{
+  display:none;
+  position:fixed;bottom:calc(var(--safe-bot) + 72px);left:12px;right:12px;
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:14px;padding:14px 16px;
+  font-size:13px;z-index:300;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+  animation:slideUp .3s ease;
+}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+#install-banner strong{display:block;font-size:14px;font-weight:700;margin-bottom:4px}
+#install-banner .close-banner{
+  position:absolute;top:10px;right:12px;
+  background:none;border:none;color:var(--text2);font-size:20px;
+}
+
+/* ── Divider ──────────────────────────────────────────────────── */
+.divider{height:1px;background:var(--border);margin:14px 0}
+
+/* ── Grid 2-col ──────────────────────────────────────────────── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.span2{grid-column:1/-1}
+
+/* ── Haptic feedback visual ───────────────────────────────────── */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="statusbar"></div>
+
+  <!-- Navbar -->
+  <div class="navbar">
+    <div>
+      <div style="font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px">会計システム</div>
+      <div class="navbar-title">レシート仕訳</div>
+    </div>
+    <div class="navbar-badge">Epson R4</div>
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="content">
+
+    <!-- Page 1: Scan -->
+    <div class="page visible" id="page1">
+      <div class="card">
+        <div class="card-title">レシートを読み込む</div>
+        <div class="notice info">📸 カメラで撮影するか、写真を選択してください</div>
+
+        <!-- Camera capture (iOS primary) -->
+        <label style="display:block">
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" multiple>
+          <div class="upload-zone" id="cameraZone">
+            <div class="upload-icon">📷</div>
+            <h3>カメラで撮影</h3>
+            <p>タップしてカメラを起動</p>
+          </div>
+        </label>
+
+        <!-- Gallery picker -->
+        <label style="display:block;margin-top:10px">
+          <input type="file" id="galleryInput" accept="image/*" style="display:none" multiple>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:12px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;font-size:14px;font-weight:600;color:var(--text2)">
+            🖼 写真ライブラリから選択
+          </div>
+        </label>
+
+        <div id="uploadErr" class="notice error" style="display:none;margin-top:10px"></div>
+      </div>
+
+      <!-- Recent journals summary -->
+      <div class="card" id="summaryCard" style="display:none">
+        <div class="card-title">今回の仕訳 <span class="count-badge" id="summaryCount">0</span></div>
+        <div id="summaryList"></div>
+        <div class="btn-row">
+          <button class="btn btn-success" onclick="goTab(3)">📊 仕訳一覧を確認</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 2: Analyze -->
+    <div class="page" id="page2">
+      <div id="analyzeList"></div>
+      <div class="btn-row" id="analyzeActions" style="display:none">
+        <div style="display:flex;gap:10px">
+          <button class="btn-sm btn-sm-ghost" style="flex:1" onclick="goTab(1)">← 戻る</button>
+          <button class="btn-sm btn-sm-primary" id="addAllBtn" onclick="addAllToJournal()">仕訳に追加 →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 3: Journal -->
+    <div class="page" id="page3">
+      <div class="card">
+        <div class="card-title">
+          仕訳一覧
+          <span class="count-badge" id="jCount" style="margin-left:auto">0件</span>
+        </div>
+        <div class="notice warn" style="font-size:12px">📝 各項目をタップして編集できます</div>
+        <div id="jList"></div>
+        <div id="jEmpty" class="empty">
+          <div class="empty-icon">📋</div>
+          <div style="font-size:14px">仕訳がまだありません<br><span style="font-size:12px;color:var(--text3)">レシートを読み込んでください</span></div>
+        </div>
+        <div class="btn-row" id="jActions" style="display:none">
+          <button class="btn btn-success" onclick="goTab(4)">⬇ CSV出力へ</button>
+          <button class="btn btn-danger" onclick="clearJournals()">🗑 全件削除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 4: CSV Export -->
+    <div class="page" id="page4">
+      <div class="card">
+        <div class="card-title">CSV 出力</div>
+        <div class="notice success">✅ Epson R4「仕訳取込」メニューからインポートできます</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:8px">プレビュー（BOM付きUTF-8）</div>
+        <div class="csv-pre" id="csvPre">— 仕訳データがありません —</div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn btn-success" onclick="dlCSV()">⬇ CSVをダウンロード</button>
+          <button class="btn btn-ghost" onclick="copyCSV()">📋 クリップボードにコピー</button>
+        </div>
+        <div class="divider"></div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.7">
+          💡 <strong style="color:var(--text2)">取込手順：</strong><br>
+          Epson R4 → 仕訳入力 → 仕訳取込 → ファイル選択 → 取込実行
+        </div>
+      </div>
+
+      <!-- API Key settings -->
+      <div class="card">
+        <div class="card-title">⚙️ API設定</div>
+        <div class="field">
+          <label>Anthropic API キー</label>
+          <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off" oninput="saveApiKey(this.value)">
+        </div>
+        <div class="notice info" style="font-size:11px;margin-bottom:0">
+          🔐 キーはこの端末のみに保存されます。<br>
+          取得: <a href="https://console.anthropic.com" style="color:var(--accent)">console.anthropic.com</a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- Bottom Tab Bar -->
+  <div class="tabbar">
+    <button class="tab active" id="tab1" onclick="goTab(1)">
+      <span class="tab-icon">📸</span>撮影
+    </button>
+    <button class="tab" id="tab2" onclick="goTab(2)">
+      <span class="tab-icon">🔍</span>解析
+    </button>
+    <button class="tab" id="tab3" onclick="goTab(3)">
+      <span class="tab-icon">📋</span>仕訳
+    </button>
+    <button class="tab" id="tab4" onclick="goTab(4)">
+      <span class="tab-icon">⬇️</span>出力
+    </button>
+  </div>
+</div>
+
+<!-- PWA install banner -->
+<div id="install-banner">
+  <button class="close-banner" onclick="document.getElementById('install-banner').style.display='none'">×</button>
+  <strong>📲 ホーム画面に追加</strong>
+  Safari の <strong>共有ボタン（□↑）→「ホーム画面に追加」</strong> でアプリとして使えます
+</div>
+
+<script>
+// ── Epson R4 勘定科目 ─────────────────────────────────────────────
+const ACCS = {
+  "現金":"101","普通預金":"111","当座預金":"112",
+  "売掛金":"135","立替金":"151","前払費用":"161","仮払消費税":"162","仮払金":"163",
+  "買掛金":"315","未払金":"320","未払費用":"325","未払消費税":"330",
+  "仮受消費税":"335","前受金":"340","預り金":"350",
+  "役員報酬":"501","給料手当":"510","法定福利費":"515",
+  "福利厚生費":"520","旅費交通費":"530","通信費":"535",
+  "水道光熱費":"538","消耗品費":"540","事務用品費":"542",
+  "新聞図書費":"545","会議費":"550","交際費":"555",
+  "広告宣伝費":"560","地代家賃":"565","賃借料":"567",
+  "修繕費":"570","保険料":"575","租税公課":"580",
+  "減価償却費":"585","支払手数料":"590","雑費":"599",
+};
+const ANAMES = Object.keys(ACCS);
+const TAXTYPES = ["課税仕入10%","課税仕入8%(軽)","非課税仕入","不課税","課税売上10%","課税売上8%(軽)"];
+
+// ── State ─────────────────────────────────────────────────────────
+let images   = [];
+let journals = [];
+let nid      = 1;
+
+// ── API Key (localStorage) ────────────────────────────────────────
+function getApiKey(){ return localStorage.getItem('apiKey')||''; }
+function saveApiKey(v){ localStorage.setItem('apiKey',v); }
+window.addEventListener('DOMContentLoaded',()=>{
+  const k = getApiKey();
+  document.getElementById('apiKeyInput').value = k;
+  checkInstallBanner();
+});
+
+// ── Tab navigation ────────────────────────────────────────────────
+let currentTab = 1;
+function goTab(n){
+  [1,2,3,4].forEach(i=>{
+    document.getElementById('page'+i).classList.toggle('visible',i===n);
+    document.getElementById('tab'+i).classList.toggle('active',i===n);
+  });
+  currentTab = n;
+  if(n===3) renderJournals();
+  if(n===4) renderCSVPreview();
+  document.getElementById('content').scrollTo({top:0,behavior:'smooth'});
+  // haptic
+  if(window.navigator.vibrate) navigator.vibrate(8);
+}
+
+// ── File input handlers ───────────────────────────────────────────
+document.getElementById('cameraInput').addEventListener('change', e => handleFiles(e.target.files));
+document.getElementById('galleryInput').addEventListener('change', e => handleFiles(e.target.files));
+
+// Drag support (desktop fallback)
+const cz = document.getElementById('cameraZone');
+cz.addEventListener('dragover', e=>{e.preventDefault();cz.classList.add('drag');});
+cz.addEventListener('dragleave', ()=>cz.classList.remove('drag'));
+cz.addEventListener('drop', e=>{e.preventDefault();cz.classList.remove('drag');handleFiles(e.dataTransfer.files);});
+
+async function handleFiles(files){
+  document.getElementById('uploadErr').style.display='none';
+  const arr = Array.from(files).filter(f=>f.type.startsWith('image/'));
+  if(!arr.length){ showErr('画像ファイルを選択してください'); return; }
+
+  images = [];
+  await Promise.all(arr.map(f=>new Promise(res=>{
+    const r=new FileReader();
+    r.onload=e=>{images.push({file:f,dataUrl:e.target.result,status:'pending',result:null,fields:{},modified:{}});res();};
+    r.readAsDataURL(f);
+  })));
+
+  goTab(2);
+  renderAnalyzeList();
+  analyzeAll();
+}
+
+function showErr(msg){
+  const el=document.getElementById('uploadErr');
+  el.textContent='⚠️ '+msg; el.style.display='flex';
+}
+
+// ── Render analyze list ───────────────────────────────────────────
+function renderAnalyzeList(){
+  document.getElementById('analyzeActions').style.display='none';
+  const el=document.getElementById('analyzeList');
+  el.innerHTML='';
+  images.forEach((img,idx)=>{
+    const d=document.createElement('div');
+    d.className='receipt-item';
+    d.id='ri'+idx;
+    d.innerHTML=`
+      <div class="receipt-header">📄 レシート ${idx+1}／${images.length}<span style="color:var(--text3);font-weight:400;margin-left:6px;font-size:11px">${h(img.file.name)}</span></div>
+      <img src="${img.dataUrl}" class="receipt-img" alt="レシート">
+      <div id="rf${idx}"><div class="analyzing-wrap"><div class="spinner"></div><div style="font-size:13px;color:var(--text2)">AI解析中…</div></div></div>`;
+    el.appendChild(d);
+  });
+}
+
+// ── Analyze ───────────────────────────────────────────────────────
+async function analyzeAll(){
+  for(let i=0;i<images.length;i++) await analyzeOne(i);
+  document.getElementById('analyzeActions').style.display='block';
+  document.getElementById('addAllBtn').disabled=false;
+}
+
+async function analyzeOne(idx){
+  const img=images[idx];
+  const b64=img.dataUrl.split(',')[1];
+  const mt=img.file.type||'image/jpeg';
+  const apiKey=getApiKey();
+
+  const prompt=`このレシート画像を分析し、以下のJSON形式のみで回答してください。前置き・説明・マークダウン記法は一切不要です。
+
+{"date":"YYYY-MM-DD","vendor":"店舗名","total_amount":税込合計(数値),"tax_10_amount":10%消費税額(数値),"tax_8_amount":8%消費税額(数値),"debit_account":"借方科目","credit_account":"貸方科目","tax_type":"消費税区分","description":"摘要","confidence":信頼度(0-1),"split_required":true_or_false}
+
+借方科目: スーパー・食料品→福利厚生費, 飲食店→会議費, 交通→旅費交通費, 文具→事務用品費, 書籍→新聞図書費, 通信→通信費, 消耗品→消耗品費, 光熱→水道光熱費, その他→雑費
+科目一覧: ${ANAMES.join('、')}
+消費税区分: ${TAXTYPES.join('、')}
+混在時: tax_type="課税仕入10%", split_required=true`;
+
+  try {
+    const headers = {'Content-Type':'application/json'};
+    if(apiKey) headers['x-api-key'] = apiKey;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers,
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:800,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:mt,data:b64}},
+          {type:'text',text:prompt},
+        ]}],
+      }),
+    });
+
+    if(!resp.ok){const t=await resp.text();throw new Error('HTTP '+resp.status+': '+t.slice(0,200));}
+    const data=await resp.json();
+    if(data.type==='error') throw new Error(data.error?.message||'APIエラー');
+
+    const raw=(data.content||[]).map(b=>b.text||'').join('').trim();
+    const m=raw.match(/\{[\s\S]*\}/);
+    if(!m) throw new Error('JSON取得失敗');
+    const result=JSON.parse(m[0]);
+
+    images[idx].result=result;
+    images[idx].status='done';
+    images[idx].fields={
+      date:   result.date||today(),
+      vendor: result.vendor||'',
+      amount: String(result.total_amount||0),
+      t10:    String(result.tax_10_amount||0),
+      t8:     String(result.tax_8_amount||0),
+      debit:  result.debit_account||'雑費',
+      credit: result.credit_account||'現金',
+      taxtype:result.tax_type||'課税仕入10%',
+      desc:   result.description||'',
+    };
+    images[idx].modified={};
+    renderReceiptFields(idx);
+
+  } catch(e){
+    images[idx].status='error';
+    images[idx].error=e.message;
+    images[idx].fields={date:today(),vendor:'',amount:'0',t10:'0',t8:'0',debit:'雑費',credit:'現金',taxtype:'課税仕入10%',desc:''};
+    images[idx].modified={};
+    renderReceiptFields(idx,true);
+  }
+}
+
+function renderReceiptFields(idx,isErr=false){
+  const img=images[idx];
+  const f=img.fields;
+  const md=img.modified;
+  const pct=Math.round((img.result?.confidence||0)*100);
+  const cc=pct>=80?'var(--success)':pct>=50?'var(--warn)':'var(--error)';
+  const split=img.result?.split_required&&parseInt(f.t10)>0&&parseInt(f.t8)>0;
+
+  const el=document.getElementById('rf'+idx);
+  el.innerHTML=`
+    ${isErr?`<div class="notice error" style="font-size:12px">❌ ${h(img.error?.slice(0,100)||'解析エラー')}<br>手動で入力してください</div>`:`
+    <div class="conf-row">
+      <span style="font-size:11px;color:var(--text2)">AI信頼度</span>
+      <div class="conf-bar"><div class="conf-fill" style="width:${pct}%;background:${cc}"></div></div>
+      <span class="conf-pct" style="color:${cc}">${pct}%</span>
+    </div>`}
+    ${split?`<div class="notice warn" style="font-size:12px">⚠️ 10%・8%混在 → 仕訳登録時に2行に自動分割します</div>`:''}
+
+    <div class="grid2">
+      ${fi(idx,'date','日付','date',f.date,md.date)}
+      ${fi(idx,'vendor','取引先','text',f.vendor,md.vendor,'例: ○○スーパー')}
+      ${fi(idx,'amount','合計金額（税込）','number',f.amount,md.amount)}
+      ${fi(idx,'t10','消費税 10%','number',f.t10,md.t10)}
+      ${fi(idx,'t8','消費税 8%（軽減）','number',f.t8,md.t8)}
+    </div>
+    <div class="field${md.debit?' mod-f':' ai-f'}" style="margin-bottom:8px">
+      <label>借方勘定科目 <span class="tag ${md.debit?'mod':'ai'}">${md.debit?'修正':'AI'}</span></label>
+      <select onchange="updF(${idx},'debit',this.value)">
+        ${ANAMES.map(a=>`<option value="${a}" ${a===f.debit?'selected':''}>${a}（${ACCS[a]}）</option>`).join('')}
+      </select>
+    </div>
+    <div class="field${md.credit?' mod-f':' ai-f'}" style="margin-bottom:8px">
+      <label>貸方勘定科目 <span class="tag ${md.credit?'mod':'ai'}">${md.credit?'修正':'AI'}</span></label>
+      <select onchange="updF(${idx},'credit',this.value)">
+        ${ANAMES.map(a=>`<option value="${a}" ${a===f.credit?'selected':''}>${a}（${ACCS[a]}）</option>`).join('')}
+      </select>
+    </div>
+    <div class="field${md.taxtype?' mod-f':' ai-f'}" style="margin-bottom:8px">
+      <label>消費税区分 <span class="tag ${md.taxtype?'mod':'ai'}">${md.taxtype?'修正':'AI'}</span></label>
+      <select onchange="updF(${idx},'taxtype',this.value)">
+        ${TAXTYPES.map(t=>`<option value="${t}" ${t===f.taxtype?'selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field span2${md.desc?' mod-f':' ai-f'}" style="margin-bottom:0">
+      <label>摘要 <span class="tag ${md.desc?'mod':'ai'}">${md.desc?'修正':'AI'}</span></label>
+      <input type="text" value="${h(f.desc)}" placeholder="例: Beisia 長久手店 食料品" onchange="updF(${idx},'desc',this.value)">
+    </div>`;
+}
+
+// フィールド HTML helper
+function fi(idx,key,lbl,type,val,mod,ph=''){
+  const cls=mod?' mod-f':' ai-f';
+  const tag=mod?'mod':'ai';
+  const tagLbl=mod?'修正':'AI';
+  return `<div class="field${cls}">
+    <label>${lbl} <span class="tag ${tag}">${tagLbl}</span></label>
+    <input type="${type}" value="${h(String(val))}" placeholder="${ph}" onchange="updF(${idx},'${key}',this.value)">
+  </div>`;
+}
+
+function updF(idx,key,val){
+  images[idx].fields[key]=val;
+  images[idx].modified[key]=true;
+  // rebuild only the tag
+  const el=document.getElementById('rf'+idx);
+  if(!el) return;
+  // re-render just the field class
+  const inputs=el.querySelectorAll('input,select');
+  inputs.forEach(inp=>{
+    const oc=inp.getAttribute('onchange')||'';
+    const m=oc.match(/'([^']+)'/);
+    if(m&&m[1]===key){
+      const wrap=inp.closest('.field');
+      if(wrap){
+        wrap.classList.remove('ai-f','mod-f');
+        wrap.classList.add('mod-f');
+        const tag=wrap.querySelector('.tag');
+        if(tag){tag.className='tag mod';tag.textContent='修正';}
+      }
+    }
+  });
+}
+
+// ── Add to journal ────────────────────────────────────────────────
+function addAllToJournal(){
+  images.forEach(img=>{
+    if(!img.fields) return;
+    const {date,vendor,amount,t10,t8,debit,credit,taxtype,desc}=img.fields;
+    const amt=parseInt(amount)||0;
+    const tx10=parseInt(t10)||0;
+    const tx8=parseInt(t8)||0;
+    const split=img.result?.split_required&&tx10>0&&tx8>0;
+    if(split){
+      const excl=amt-tx10-tx8;
+      const b10=Math.round(excl*tx10/(tx10+tx8));
+      const b8=excl-b10;
+      journals.push({id:nid++,date,vendor,amount:b10+tx10,tax:tx10,debit,credit,taxType:'課税仕入10%',desc:desc+'（10%対象）'});
+      journals.push({id:nid++,date,vendor,amount:b8+tx8,tax:tx8,debit,credit,taxType:'課税仕入8%(軽)',desc:desc+'（8%軽減）'});
+    } else {
+      journals.push({id:nid++,date,vendor,amount:amt,tax:tx10||tx8,debit,credit,taxType:taxtype,desc});
+    }
+  });
+  goTab(3);
+  updateSummary();
+  if(navigator.vibrate) navigator.vibrate([10,30,10]);
+}
+
+// ── Journal list ──────────────────────────────────────────────────
+function renderJournals(){
+  const el=document.getElementById('jList');
+  const empty=document.getElementById('jEmpty');
+  const actions=document.getElementById('jActions');
+  document.getElementById('jCount').textContent=journals.length+'件';
+
+  if(!journals.length){el.innerHTML='';empty.style.display='';actions.style.display='none';return;}
+  empty.style.display='none';actions.style.display='block';
+
+  el.innerHTML=journals.map(r=>`
+    <div class="j-card ${r.taxType.includes('8%')?'tax8':'tax10'}" id="jc${r.id}">
+      <button class="j-del" onclick="delJ(${r.id})">×</button>
+      <div class="j-row">
+        <span class="j-label">日付</span>
+        <input class="j-val" type="date" value="${r.date}" style="background:none;border:none;font-size:13px;color:var(--text);padding:0;flex:1" onchange="updJ(${r.id},'date',this.value)">
+      </div>
+      <div class="j-row">
+        <span class="j-label">金額</span>
+        <span class="j-amt">&yen;${r.amount.toLocaleString()}</span>
+      </div>
+      <div class="j-row">
+        <span class="j-label">取引先</span>
+        <span class="j-val" style="color:var(--text2)">${h(r.vendor||'—')}</span>
+      </div>
+      <div class="divider"></div>
+      <div class="j-edit-row">
+        <select onchange="updJ(${r.id},'debit',this.value)">
+          ${ANAMES.map(a=>`<option value="${a}" ${a===r.debit?'selected':''}>借方: ${a}</option>`).join('')}
+        </select>
+        <select onchange="updJ(${r.id},'credit',this.value)">
+          ${ANAMES.map(a=>`<option value="${a}" ${a===r.credit?'selected':''}>貸方: ${a}</option>`).join('')}
+        </select>
+      </div>
+      <div style="margin-top:8px">
+        <select style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--text)" onchange="updJ(${r.id},'taxType',this.value)">
+          ${TAXTYPES.map(t=>`<option value="${t}" ${t===r.taxType?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div style="margin-top:8px">
+        <input type="text" value="${h(r.desc)}" placeholder="摘要" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text)" onchange="updJ(${r.id},'desc',this.value)">
+      </div>
+    </div>`).join('');
+}
+
+function updJ(id,k,v){const r=journals.find(x=>x.id===id);if(r)r[k]=v;}
+function delJ(id){
+  journals=journals.filter(r=>r.id!==id);
+  renderJournals();
+  updateSummary();
+  if(navigator.vibrate) navigator.vibrate(20);
+}
+function clearJournals(){
+  if(!confirm('全件削除しますか？')) return;
+  journals=[];renderJournals();updateSummary();
+}
+
+// ── Summary card on scan page ─────────────────────────────────────
+function updateSummary(){
+  const card=document.getElementById('summaryCard');
+  const list=document.getElementById('summaryList');
+  document.getElementById('summaryCount').textContent=journals.length+'件';
+  if(!journals.length){card.style.display='none';return;}
+  card.style.display='block';
+  const total=journals.reduce((s,r)=>s+r.amount,0);
+  list.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span style="font-size:13px;color:var(--text2)">合計金額</span>
+    <span style="font-size:20px;font-weight:700;color:var(--accent)">¥${total.toLocaleString()}</span>
+  </div>
+  ${journals.slice(-3).map(r=>`<div style="font-size:12px;color:var(--text2);padding:4px 0;border-top:1px solid var(--border)">${r.date} ${h(r.vendor||'—')} ¥${r.amount.toLocaleString()}</div>`).join('')}`;
+}
+
+// ── CSV ───────────────────────────────────────────────────────────
+function buildCSV(){
+  const hdr='伝票日付,借方科目コード,借方科目名,借方金額,貸方科目コード,貸方科目名,貸方金額,消費税区分,税額,摘要';
+  const rows=journals.map(r=>[
+    r.date.replace(/-/g,'/'),ACCS[r.debit]||'999',r.debit,r.amount,
+    ACCS[r.credit]||'999',r.credit,r.amount,r.taxType,r.tax,`"${r.desc}"`,
+  ].join(','));
+  return [hdr,...rows].join('\n');
+}
+function renderCSVPreview(){
+  document.getElementById('csvPre').textContent=journals.length?buildCSV():'— 仕訳データがありません —';
+}
+function dlCSV(){
+  if(!journals.length){alert('仕訳データがありません');return;}
+  const blob=new Blob(['\uFEFF'+buildCSV()],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='仕訳_'+today().replace(/-/g,'')+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+}
+async function copyCSV(){
+  if(!journals.length){alert('仕訳データがありません');return;}
+  try{
+    await navigator.clipboard.writeText(buildCSV());
+    alert('クリップボードにコピーしました');
+  }catch(e){alert('コピーに失敗しました');}
+}
+
+// ── PWA install banner ────────────────────────────────────────────
+function checkInstallBanner(){
+  const ua=navigator.userAgent;
+  const isSafari=/Safari/.test(ua)&&!/Chrome/.test(ua);
+  const isIOS=/iPhone|iPad|iPod/.test(ua);
+  const isStandalone=window.navigator.standalone||window.matchMedia('(display-mode: standalone)').matches;
+  const dismissed=localStorage.getItem('bannerDismissed');
+  if(isSafari&&isIOS&&!isStandalone&&!dismissed){
+    setTimeout(()=>{document.getElementById('install-banner').style.display='block';},2000);
+  }
+}
+document.querySelector('.close-banner').addEventListener('click',()=>{
+  localStorage.setItem('bannerDismissed','1');
+});
+
+// ── Service Worker registration ───────────────────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW:',e));
+  });
+}
+
+// ── Utils ──────────────────────────────────────────────────────────
+function today(){return new Date().toISOString().slice(0,10);}
+function h(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+</script>
+</body>
+</html>
