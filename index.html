@@ -632,7 +632,21 @@ async function analyzeOne(idx){
 消費税区分: ${TAXTYPES.join('、')}
 混在時: tax_type="課税仕入10%", split_required=true`;
 
+  // デバッグログ表示
+  function setDbg(msg){ const el=document.getElementById('rf'+idx); if(el){ const d=el.querySelector('.dbg-msg')||Object.assign(document.createElement('div'),{className:'dbg-msg'}); d.style.cssText='font-size:10px;color:#888;margin-top:6px;word-break:break-all;font-family:monospace;'; d.textContent='[LOG] '+msg; if(!el.querySelector('.dbg-msg')) el.appendChild(d); else el.querySelector('.dbg-msg').textContent='[LOG] '+msg; } }
+
   try {
+    setDbg('API送信中 model=claude-haiku-4-5-20251001 key='+apiKey.slice(0,12)+'...');
+
+    const reqBody = {
+      model:'claude-haiku-4-5-20251001',
+      max_tokens:800,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:mt,data:b64}},
+        {type:'text',text:prompt},
+      ]}],
+    };
+
     const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{
@@ -641,28 +655,24 @@ async function analyzeOne(idx){
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body:JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        max_tokens:800,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:mt,data:b64}},
-          {type:'text',text:prompt},
-        ]}],
-      }),
+      body:JSON.stringify(reqBody),
     });
+
+    setDbg('レスポンス: HTTP '+resp.status);
 
     if(!resp.ok){
       const t=await resp.text();
       let msg='';
-      try{ const j=JSON.parse(t); msg=j.error?.message||t; }catch{ msg=t; }
-      throw new Error('HTTP '+resp.status+': '+msg.slice(0,200));
+      try{ const j=JSON.parse(t); msg=j.error?.message||j.error?.type||t; }catch{ msg=t; }
+      throw new Error('HTTP '+resp.status+' — '+msg.slice(0,300));
     }
     const data=await resp.json();
-    if(data.type==='error') throw new Error(data.error?.message||'APIエラー');
+    if(data.type==='error') throw new Error('APIエラー: '+( data.error?.message||JSON.stringify(data.error)));
 
     const raw=(data.content||[]).map(b=>b.text||'').join('').trim();
+    setDbg('AIレスポンス取得 ('+raw.length+'文字)');
     const m=raw.match(/\{[\s\S]*\}/);
-    if(!m) throw new Error('AIの応答からJSONを取得できませんでした');
+    if(!m) throw new Error('JSON抽出失敗。AIの返答: '+raw.slice(0,200));
     const result=JSON.parse(m[0]);
 
     images[idx].result=result;
@@ -682,10 +692,30 @@ async function analyzeOne(idx){
     renderReceiptFields(idx);
 
   } catch(e){
+    console.error('[ReceiptApp] analyzeOne error:', e);
     images[idx].status='error';
     images[idx].error=e.message;
     images[idx].fields={date:today(),vendor:'',amount:'0',t10:'0',t8:'0',debit:'雑費',credit:'現金',taxtype:'課税仕入10%',desc:''};
     images[idx].modified={};
+    renderReceiptFields(idx,true);
+    // エラー種別ごとのヒントをerrorフィールドに追加
+    const em=e.message||'';
+    if(em.includes('401')) images[idx].error='❌ APIキーが無効です（401）。正しいキーか確認してください。
+'+em;
+    else if(em.includes('403')) images[idx].error='❌ アクセス拒否（403）。APIキーの権限を確認してください。
+'+em;
+    else if(em.includes('429')) images[idx].error='❌ レート制限超過（429）。少し待ってから再試行してください。
+'+em;
+    else if(em.includes('500')||em.includes('529')) images[idx].error='❌ Anthropicサーバーエラー（5xx）。時間をおいて再試行してください。
+'+em;
+    else if(em.includes('Failed to fetch')||em.includes('NetworkError')) images[idx].error='❌ ネットワークエラー。インターネット接続を確認してください。
+'+em;
+    if(em.includes('401')) images[idx].error='❌ APIキーが無効（401）\n正しいキーか確認してください\n詳細: '+em;
+    else if(em.includes('403')) images[idx].error='❌ アクセス拒否（403）\nAPIキーの権限を確認してください\n詳細: '+em;
+    else if(em.includes('429')) images[idx].error='❌ レート制限超過（429）\n少し待ってから再試行してください\n詳細: '+em;
+    else if(em.includes('500')||em.includes('529')) images[idx].error='❌ サーバーエラー（5xx）\n時間をおいて再試行してください\n詳細: '+em;
+    else if(em.includes('Failed to fetch')||em.includes('NetworkError')||em.includes('fetch')) images[idx].error='❌ ネットワークエラー\nインターネット接続を確認してください\n詳細: '+em;
+    else images[idx].error=em;
     renderReceiptFields(idx,true);
   }
 }
@@ -700,7 +730,12 @@ function renderReceiptFields(idx,isErr=false){
 
   const el=document.getElementById('rf'+idx);
   el.innerHTML=`
-    ${isErr?`<div class="notice error" style="font-size:12px;flex-direction:column;gap:5px"><div>❌ <strong>解析エラー</strong></div><div style="word-break:break-all;opacity:.9">${h(img.error||'不明なエラー')}</div><div style="margin-top:4px">👉 APIキー未設定の場合は <strong>「⬇ 出力」タブ → API設定</strong> から入力</div></div>`:`
+    ${isErr?`<div class="notice error" style="flex-direction:column;gap:6px;font-size:12px;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:700">❌ AI解析エラー</div>
+      <div style="word-break:break-all;white-space:pre-wrap;line-height:1.6;background:rgba(0,0,0,.2);padding:8px;border-radius:6px;font-family:monospace;font-size:11px">${h(img.error||'不明なエラー')}</div>
+      <div>👉 APIキーは <strong>「⬇ 出力」タブ → API設定</strong> で確認できます</div>
+      <button onclick="goTab(4)" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;margin-top:2px">⚙️ API設定を開く</button>
+    </div>`:`
     <div class="conf-row">
       <span style="font-size:11px;color:var(--text2)">AI信頼度</span>
       <div class="conf-bar"><div class="conf-fill" style="width:${pct}%;background:${cc}"></div></div>
