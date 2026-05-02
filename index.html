@@ -491,7 +491,7 @@ async function testApiKey(){
     const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:10,messages:[{role:'user',content:'hi'}]}),
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,messages:[{role:'user',content:'hi'}]}),
     });
     if(resp.ok||resp.status===200){ showApiStatus('success','✅ APIキーが正常に確認できました！レシートを読み込んでください'); }
     else if(resp.status===401){ showApiStatus('error','❌ APIキーが無効です。正しいキーを入力してください'); }
@@ -543,7 +543,26 @@ async function handleFiles(files){
   images = [];
   await Promise.all(arr.map(f=>new Promise(res=>{
     const r=new FileReader();
-    r.onload=e=>{images.push({file:f,dataUrl:e.target.result,status:'pending',result:null,fields:{},modified:{}});res();};
+    r.onload=e=>{
+      // iOSの大きな画像はリサイズしてAPIの上限(5MB base64)に収める
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=1600;
+        let w=img.width, h=img.height;
+        if(w>MAX||h>MAX){ const s=MAX/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+        const cv=document.createElement('canvas');
+        cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        const resized=cv.toDataURL('image/jpeg',0.88);
+        images.push({file:f,dataUrl:resized,status:'pending',result:null,fields:{},modified:{}});
+        res();
+      };
+      img.onerror=()=>{
+        images.push({file:f,dataUrl:e.target.result,status:'pending',result:null,fields:{},modified:{}});
+        res();
+      };
+      img.src=e.target.result;
+    };
     r.readAsDataURL(f);
   })));
 
@@ -589,7 +608,9 @@ async function analyzeAll(){
 async function analyzeOne(idx){
   const img=images[idx];
   const b64=img.dataUrl.split(',')[1];
-  const mt=img.file.type||'image/jpeg';
+  // iOSのHEIC/HEIFはjpegとして送信（API非対応のため）
+  const rawMt=img.file.type||'image/jpeg';
+  const mt=(rawMt==='image/heic'||rawMt==='image/heif'||rawMt==='')?'image/jpeg':rawMt;
   const apiKey=getApiKey();
 
   // APIキー未設定チェック
@@ -621,7 +642,7 @@ async function analyzeOne(idx){
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body:JSON.stringify({
-        model:'claude-opus-4-5',
+        model:'claude-haiku-4-5-20251001',
         max_tokens:800,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:mt,data:b64}},
